@@ -100,7 +100,7 @@ const Navbar = ({ user, loading, userData }) => {
           isVisible ? "translate-y-0" : "-translate-y-full"
         }`}
       >
-        <div className="max-w-[1600px] mx-auto px-5 lg:px-8 py-4 flex items-center justify-between">
+        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-4 flex items-center justify-between">
           {/* LEFT */}
           <Link
             to={user ? "/analyze" : "/"}
@@ -109,7 +109,7 @@ const Navbar = ({ user, loading, userData }) => {
             <img
               src="/images/logo/kalorinLogo.png"
               alt="Hitung Sehat Logo"
-              className="w-24 sm:w-28"
+              className="w-20 sm:w-24 md:w-28"
             />
           </Link>
 
@@ -175,7 +175,7 @@ const Navbar = ({ user, loading, userData }) => {
 
         {/* PANEL */}
         <div
-          className={`absolute top-0 right-0 h-full w-[82%] max-w-sm bg-white shadow-2xl border-l border-gray-100 transition-transform duration-300 ${
+          className={`absolute top-0 right-0 h-full w-[85%] max-w-xs sm:max-w-sm bg-white shadow-2xl border-l border-gray-100 transition-transform duration-300 ${
             mobileOpen ? "translate-x-0" : "translate-x-full"
           }`}
         >

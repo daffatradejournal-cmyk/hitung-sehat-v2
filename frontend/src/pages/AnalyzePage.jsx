@@ -207,7 +207,7 @@ const AnalyzePage = () => {
   }, [user]);
 
   return (
-    <div className="min-h-screen bg-white pt-24 font-sans flex flex-col">
+    <div className="min-h-screen bg-white pt-20 sm:pt-24 font-sans flex flex-col">
       <Navbar user={user} loading={false} />
 
       {/* GUEST BANNER */}
@@ -224,7 +224,7 @@ const AnalyzePage = () => {
       )}
 
       {/* HEADER */}
-      <div className="max-w-7xl mx-auto px-4 w-full py-8">
+      <div className="max-w-7xl mx-auto px-3.5 sm:px-4 w-full py-4 sm:py-8">
         <div className="flex justify-between items-center mb-6">
           <div>
             <h1 className="text-xl font-bold text-gray-900 mb-1">
@@ -256,7 +256,7 @@ const AnalyzePage = () => {
                 tab: "scan",
               })
             }
-            className={`flex-1 py-3 text-base font-medium rounded-xl flex items-center justify-center gap-2 transition-all duration-300 ${
+            className={`flex-1 py-2.5 sm:py-3 text-sm sm:text-base font-semibold rounded-xl flex items-center justify-center gap-2 transition-all duration-300 ${
               currentTab === "scan"
                 ? "bg-white text-green-500 shadow-sm"
                 : "text-gray-500"
@@ -272,7 +272,7 @@ const AnalyzePage = () => {
                 tab: "search",
               })
             }
-            className={`flex-1 py-3 text-base font-medium rounded-xl flex items-center justify-center gap-2 transition-all duration-300 ${
+            className={`flex-1 py-2.5 sm:py-3 text-sm sm:text-base font-semibold rounded-xl flex items-center justify-center gap-2 transition-all duration-300 ${
               currentTab === "search"
                 ? "bg-white text-green-500 shadow-sm"
                 : "text-gray-500"
@@ -286,9 +286,9 @@ const AnalyzePage = () => {
 
       {/* TAB CONTENT */}
       {currentTab === "scan" ? (
-        <div className="bg-[#eefaf1] w-full flex-grow mt-4 pt-10 pb-20">
+        <div className="bg-[#eefaf1] w-full flex-grow mt-2 sm:mt-4 pt-6 sm:pt-10 pb-16 sm:pb-20">
           <div className="max-w-7xl mx-auto px-4 w-full">
-            <div className="border-2 border-green-400 border-dashed rounded-3xl p-6 min-h-[400px] flex items-center justify-center bg-black/5 overflow-hidden mb-6">
+            <div className="border-2 border-green-400 border-dashed rounded-3xl p-3 sm:p-6 min-h-[320px] sm:min-h-[400px] flex items-center justify-center bg-black/5 overflow-hidden mb-6">
               {isCameraActive ? (
                 <CameraScanner
                   facingMode={facingMode}
