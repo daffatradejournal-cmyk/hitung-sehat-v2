@@ -2,6 +2,13 @@ const admin = require("../config/firebaseAdmin");
 
 const authenticateFirebaseToken = async (req, res, next) => {
   try {
+    if (!admin.apps.length) {
+      return res.status(503).json({
+        success: false,
+        message: "Firebase Admin is not configured on this server.",
+      });
+    }
+
     const authHeader = req.headers.authorization || "";
     const [scheme, token] = authHeader.split(" ");
 

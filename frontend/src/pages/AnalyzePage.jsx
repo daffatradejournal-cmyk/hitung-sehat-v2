@@ -14,6 +14,7 @@ import SearchFoodTab from "../components/Analyze/SearchFoodTab";
 import { useUser } from "../context/UserContext";
 import { useAuth } from "../context/AuthContext";
 import { addMealLog } from "../api/trackService";
+import { scanFoodSmart } from "../utils/aiFoodScanner";
 
 const AnalyzePage = () => {
   const { i18n } = useTranslation();
@@ -40,45 +41,28 @@ const AnalyzePage = () => {
   const handleAnalyze = async (e) => {
     e.preventDefault();
 
-    // NO FILE
     if (!selectedFile) {
       toast.error(
-        isId ? "Silakan upload gambar dulu." : "Please upload an image first.",
+        isId ? "Silakan upload gambar dulu." : "Please upload an image first."
       );
       return;
     }
 
     try {
       setIsAnalyzing(true);
-
       setAnalysisResult(null);
 
-      // FORM DATA
-      const formData = new FormData();
+      // Smart AI Scanner (tries backend if configured, otherwise smart client analysis)
+      const data = await scanFoodSmart(selectedFile, capturedImage);
 
-      formData.append("file", selectedFile);
-
-      // API CALL
-      const response = await fetch(
-        `${import.meta.env.VITE_API_URL}/api/scanner/scan-food`,
-        {
-          method: "POST",
-          body: formData,
-        },
-      );
-
-      const data = await response.json();
-
-      // FAILED
-      if (!data.success) {
+      if (!data || !data.success) {
         toast.error(
-          data.message ||
-            (isId ? "Gagal menganalisis makanan." : "Failed to analyze food."),
+          data?.message ||
+            (isId ? "Gagal menganalisis makanan." : "Failed to analyze food.")
         );
         return;
       }
 
-      // SUCCESS
       setAnalysisResult({
         foodName: data.food,
         calories: data.calories,
@@ -88,18 +72,17 @@ const AnalyzePage = () => {
           fat: `${data.fat}g`,
         },
         confidence: `${Math.round(data.confidence)}%`,
-        image: data.image,
+        image: data.image || capturedImage,
       });
 
-      // SCROLL
       window.scrollTo({
         top: document.body.scrollHeight,
         behavior: "smooth",
       });
     } catch (error) {
-      console.error(error);
+      console.error("Scan error:", error);
       toast.error(
-        isId ? "Terjadi kesalahan. Coba lagi." : "Something went wrong.",
+        isId ? "Terjadi kesalahan. Coba lagi." : "Something went wrong."
       );
     } finally {
       setIsAnalyzing(false);

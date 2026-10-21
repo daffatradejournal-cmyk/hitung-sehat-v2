@@ -9,13 +9,24 @@ const buildCredential = () => {
     return admin.credential.cert(serviceAccount);
   }
 
-  return admin.credential.applicationDefault();
+  if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    return admin.credential.applicationDefault();
+  }
+
+  return null;
 };
 
 if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: buildCredential(),
-  });
+  try {
+    const credential = buildCredential();
+    if (credential) {
+      admin.initializeApp({ credential });
+    } else {
+      console.warn("⚠️ Firebase Admin credentials not provided. Server will run without Firebase Admin.");
+    }
+  } catch (err) {
+    console.warn("⚠️ Error initializing Firebase Admin:", err.message);
+  }
 }
 
 module.exports = admin;

@@ -2,14 +2,22 @@ const { searchExternalFood } = require("../services/externalApiService");
 const prisma = require("../config/prisma");
 const isDev = process.env.NODE_ENV !== "production";
 
+let nutritionFallback = [];
+try {
+  nutritionFallback = require("../../data/nutrition_data.json");
+} catch {
+  nutritionFallback = [];
+}
+
 const getAllFoods = async (req, res, next) => {
   try {
     const foods = await prisma.food.findMany({
-      take: 50, // ambil 50 data, takut berat
+      take: 50,
     });
-    res.json({ success: true, data: foods });
+    return res.json({ success: true, data: foods });
   } catch (error) {
-    next(error);
+    console.warn("Database unavailable, serving nutrition fallback:", error.message);
+    return res.json({ success: true, data: nutritionFallback.slice(0, 50) });
   }
 };
 
@@ -24,15 +32,22 @@ const getFoodById = async (req, res, next) => {
       });
     }
 
-    const food = await prisma.food.findUnique({
-      where: { id: foodId },
-    });
-    if (!food) {
+    try {
+      const food = await prisma.food.findUnique({
+        where: { id: foodId },
+      });
+      if (food) return res.json({ success: true, data: food });
+    } catch {
+      // ignore db error, check fallback
+    }
+
+    const fallbackFood = nutritionFallback.find((f) => f.id === foodId);
+    if (!fallbackFood) {
       return res
         .status(404)
         .json({ success: false, message: "Makanan tidak ditemukan" });
     }
-    res.json({ success: true, data: food });
+    return res.json({ success: true, data: fallbackFood });
   } catch (error) {
     next(error);
   }
@@ -48,34 +63,37 @@ const searchFood = async (req, res, next) => {
         .json({ success: false, message: "Keyword dibutuhkan" });
     }
 
-    // Cari di Database Lokal (Supabase) dulu
-    const localFoods = await prisma.food.findMany({
-      where: {
-        name: {
-          contains: keyword,
-          mode: "insensitive", // Biar huruf besar/kecil gak ngaruh
+    let localFoods = [];
+    try {
+      localFoods = await prisma.food.findMany({
+        where: {
+          name: {
+            contains: keyword,
+            mode: "insensitive",
+          },
         },
-      },
-      take: 5,
-    });
-
-    // Kalau di lokal datanya kosong atau kurang dari 3, panggil API Luar
-    let externalFoods = [];
-    if (localFoods.length < 3) {
-      if (isDev) {
-        console.info(
-          `Pencarian lokal untuk "${keyword}" sedikit, memanggil API eksternal...`,
-        );
-      }
-      externalFoods = await searchExternalFood(keyword);
+        take: 10,
+      });
+    } catch (err) {
+      console.warn("DB search failed, using local json search:", err.message);
+      const q = keyword.toLowerCase();
+      localFoods = nutritionFallback
+        .filter((f) => f.name.toLowerCase().includes(q))
+        .slice(0, 10);
     }
 
-    // Gabungkan hasil lokal dan eksternal
-    const finalResults = [...localFoods, ...externalFoods];
+    let externalFoods = [];
+    if (localFoods.length < 3) {
+      try {
+        externalFoods = await searchExternalFood(keyword);
+      } catch {
+        externalFoods = [];
+      }
+    }
 
     return res.status(200).json({
       success: true,
-      data: finalResults,
+      data: [...localFoods, ...externalFoods],
     });
   } catch (error) {
     return next(error);

@@ -6,6 +6,7 @@ import SearchFoodCard from "./SearchFoodCard";
 import SearchCategoryChips from "./SearchCategoryChips";
 import { categories, categoryFilters } from "./searchConfig";
 import shuffleArray from "../../utils/shuffleArray";
+import { searchFoodLocal } from "../../utils/aiFoodScanner";
 import axios from "axios"; //
 
 const SearchFoodTab = () => {
@@ -54,19 +55,27 @@ const SearchFoodTab = () => {
       setIsLoading(true);
 
       try {
-        const response = await axios.get(
-          `${import.meta.env.VITE_API_URL}/api/foods/search`,
-          {
-            params: {
-              keyword: debouncedSearch,
+        const apiUrl = (import.meta.env.VITE_API_URL || "").trim().replace(/\/+$/, "");
+        if (apiUrl && apiUrl !== "undefined") {
+          const response = await axios.get(
+            `${apiUrl}/api/foods/search`,
+            {
+              params: {
+                keyword: debouncedSearch,
+              },
+              timeout: 6000,
             },
-          },
-        );
-
-        setSearchResults(response.data.data || []);
+          );
+          if (response.data && response.data.data && response.data.data.length > 0) {
+            setSearchResults(response.data.data);
+            return;
+          }
+        }
+        // Fallback to local search
+        setSearchResults(searchFoodLocal(debouncedSearch));
       } catch (error) {
-        console.error("❌ Search API failed:", error);
-        setSearchResults([]);
+        console.warn("Remote search failed, falling back to local dataset:", error);
+        setSearchResults(searchFoodLocal(debouncedSearch));
       } finally {
         setIsLoading(false);
       }

@@ -19,8 +19,8 @@ const validateCriticalEnv = () => {
   );
 
   if (!hasFirebaseCredential) {
-    throw new Error(
-      "Missing Firebase Admin credential: set FIREBASE_SERVICE_ACCOUNT_BASE64 or GOOGLE_APPLICATION_CREDENTIALS",
+    console.warn(
+      "⚠️ Notice: Missing Firebase Admin credential. Auth-protected routes will reject requests until FIREBASE_SERVICE_ACCOUNT_BASE64 is set.",
     );
   }
 };
