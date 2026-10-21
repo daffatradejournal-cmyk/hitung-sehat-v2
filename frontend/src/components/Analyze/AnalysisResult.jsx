@@ -1,6 +1,6 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
-import { Plus, Loader2 } from "lucide-react";
+import { Plus, Loader2, Sparkles } from "lucide-react";
 
 const AnalysisResult = ({
   result,
@@ -52,6 +52,19 @@ const AnalysisResult = ({
           </div>
         ))}
       </div>
+      {result.description && (
+        <div className="mt-4 p-4 bg-emerald-50/80 border border-emerald-100 rounded-2xl flex items-start gap-3 text-left">
+          <Sparkles className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-xs font-bold text-emerald-800 uppercase tracking-wider mb-0.5">
+              {isId ? "Analisis Gizi AI" : "AI Nutrition Note"}
+            </p>
+            <p className="text-xs sm:text-sm text-emerald-700 leading-relaxed font-medium">
+              {result.description}
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="mt-6 flex flex-col sm:flex-row gap-3">
         <button
