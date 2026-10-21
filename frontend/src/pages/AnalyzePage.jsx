@@ -15,7 +15,6 @@ import { useUser } from "../context/UserContext";
 import { useAuth } from "../context/AuthContext";
 import { addMealLog } from "../api/trackService";
 import { scanFoodSmart } from "../utils/aiFoodScanner";
-import GeminiKeyModal from "../components/Analyze/GeminiKeyModal";
 
 const AnalyzePage = () => {
   const { i18n } = useTranslation();
@@ -37,7 +36,6 @@ const AnalyzePage = () => {
   const [capturedImage, setCapturedImage] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [isAddingMeal, setIsAddingMeal] = useState(false);
-  const [isGeminiModalOpen, setIsGeminiModalOpen] = useState(false);
 
   // ANALYZE HANDLER
   const handleAnalyze = async (e) => {
@@ -243,21 +241,11 @@ const AnalyzePage = () => {
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setIsGeminiModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-50 to-green-50 border border-emerald-200 text-emerald-800 text-xs font-bold hover:shadow-sm transition cursor-pointer"
-              title="Atur Kunci Google Gemini AI"
-            >
-              <Sparkles size={14} className="text-emerald-600" />
-              <span>{isId ? "Google Gemini AI" : "Gemini AI Key"}</span>
-            </button>
-            {isGuest && (
-              <span className="px-4 py-2 border border-green-600 bg-[#eefaf1] text-green-600 text-xs font-semibold rounded-xl">
-                {isId ? "Mode Tamu" : "Guest Mode"}
-              </span>
-            )}
-          </div>
+          {isGuest && (
+            <span className="px-4 py-2 border border-green-600 bg-[#eefaf1] text-green-600 text-xs font-semibold rounded-xl">
+              {isId ? "Mode Tamu" : "Guest Mode"}
+            </span>
+          )}
         </div>
 
         {/* TAB SWITCHER */}
@@ -340,10 +328,6 @@ const AnalyzePage = () => {
       ) : (
         <SearchFoodTab />
       )}
-      <GeminiKeyModal
-        isOpen={isGeminiModalOpen}
-        onClose={() => setIsGeminiModalOpen(false)}
-      />
     </div>
   );
 };

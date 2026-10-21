@@ -1,5 +1,8 @@
 import nutritionData from "../data/nutritionData.json";
 
+// Built-in Google Gemini API Key
+const BUILTIN_GEMINI_KEY = "AIzaSyAFjjVn7igBDjQFLbQnlYyryNYmCPFDL9I";
+
 /**
  * Convert file to base64
  */
@@ -21,23 +24,23 @@ const fileToBase64 = (file) => {
 };
 
 /**
- * Analyze food image directly using Google Gemini Vision API
+ * Direct Google Gemini Vision Multimodal Food Recognition
  */
-export const analyzeFoodWithGemini = async (apiKey, file) => {
+export const analyzeFoodWithGemini = async (file) => {
   const { base64, mime } = await fileToBase64(file);
 
   const prompt = `Kamu adalah pakar gizi dan ahli nutrisi digital profesional untuk aplikasi "Hitung Sehat".
 Analisis foto makanan/minuman ini secara cermat.
-Identifikasi semua makanan atau minuman yang terlihat (lauk, sayur, karbohidrat, kuah, porsi), perkirakan porsi yang disajikan, dan hitung estimasi nilai nutrisinya:
-1. food: Nama makanan lengkap dan deskriptif dalam Bahasa Indonesia (contoh: "Nasi Goreng Telur Ceplok", "Salad Sayur Saus Wijen", "Ayam Bakar Madu dengan Nasi Putih", "Sop Buntut Sapi", "Roti Bakar Coklat Keju").
+Identifikasi semua makanan atau minuman yang terlihat dalam foto (misal: lauk pauk, nasi, sayur, topping, sambal, buah, atau minuman), perkirakan porsi yang disajikan, dan hitung estimasi nilai nutrisinya:
+1. food: Nama makanan lengkap dan deskriptif dalam Bahasa Indonesia (contoh: "Nasi Uduk dengan Ayam Goreng & Sambal", "Salad Caesar Ayam Panggang", "Soto Betawi Daging Sapi", "Gado-Gado Telur", "Avocado Toast Telur Rebus"). Jika bukan makanan, sebutkan objeknya.
 2. calories: Total perkiraan kalori (dalam kkal / kcal, angka bulat).
-3. proteins: Perkiraan protein (dalam gram, angka).
-4. carbohydrate: Perkiraan karbohidrat (dalam gram, angka).
-5. fat: Perkiraan lemak (dalam gram, angka).
+3. proteins: Perkiraan protein (dalam gram, angka bulat atau desimal).
+4. carbohydrate: Perkiraan karbohidrat (dalam gram, angka bulat atau desimal).
+5. fat: Perkiraan lemak (dalam gram, angka bulat atau desimal).
 6. confidence: Persentase keyakinan deteksi dari 88 sampai 98 (angka bulat).
-7. description: 1-2 kalimat ramah dan edukatif mengenai manfaat atau kandungan gizi makanan ini bagi tubuh.
+7. description: 1-2 kalimat ramah dan informatif mengenai kandungan gizi makanan ini serta dampaknya bagi kesehatan tubuh.
 
-Balas HANYA dengan objek JSON murni tanpa markdown formatting atau teks pengantar:
+Balas HANYA dengan objek JSON murni tanpa markdown formatting atau teks tambahan:
 {
   "food": "...",
   "calories": 450,
@@ -48,13 +51,12 @@ Balas HANYA dengan objek JSON murni tanpa markdown formatting atau teks penganta
   "description": "..."
 }`;
 
-  const cleanKey = apiKey.trim();
-  // Support gemini-2.5-flash, gemini-1.5-flash, and gemini-2.0-flash
-  const models = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.0-flash"];
+  const apiKey = (import.meta.env.VITE_GEMINI_API_KEY || BUILTIN_GEMINI_KEY).trim();
+  const models = ["gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-2.5-flash"];
 
   for (const model of models) {
     try {
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${cleanKey}`;
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
       const payload = {
         contents: [
           {
@@ -82,7 +84,7 @@ Balas HANYA dengan objek JSON murni tanpa markdown formatting atau teks penganta
       });
 
       if (!res.ok) {
-        console.warn(`Model ${model} response not ok:`, res.status);
+        console.warn(`Model ${model} status:`, res.status);
         continue;
       }
 
@@ -107,72 +109,26 @@ Balas HANYA dengan objek JSON murni tanpa markdown formatting atau teks penganta
         };
       }
     } catch (err) {
-      console.warn(`Gemini API call error with model ${model}:`, err);
+      console.warn(`Error connecting to model ${model}:`, err);
     }
   }
 
-  throw new Error("Tidak dapat menghubungi model Gemini Vision.");
-};
-
-/**
- * Helper to analyze image colors via HTML Canvas
- */
-const analyzeImageDominantColor = (imageSource) => {
-  return new Promise((resolve) => {
-    try {
-      const img = new Image();
-      img.crossOrigin = "anonymous";
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        const ctx = canvas.getContext("2d");
-        canvas.width = 64;
-        canvas.height = 64;
-        ctx.drawImage(img, 0, 0, 64, 64);
-        const data = ctx.getImageData(0, 0, 64, 64).data;
-
-        let r = 0,
-          g = 0,
-          b = 0,
-          count = 0;
-        for (let i = 0; i < data.length; i += 16) {
-          r += data[i];
-          g += data[i + 1];
-          b += data[i + 2];
-          count++;
-        }
-        r = Math.round(r / count);
-        g = Math.round(g / count);
-        b = Math.round(b / count);
-
-        resolve({ r, g, b });
-      };
-      img.onerror = () => resolve({ r: 150, g: 150, b: 150 });
-      img.src = imageSource;
-    } catch {
-      resolve({ r: 150, g: 150, b: 150 });
-    }
-  });
+  throw new Error("Gemini AI Vision temporarily unavailable.");
 };
 
 /**
  * Smart Food Scanner Entrypoint
  * Priority:
- * 1. Google Gemini AI (if API key available in Vercel env or localStorage)
- * 2. Remote Backend API (if configured & reachable)
- * 3. Local Dataset & Visual Matcher (Offline failsafe)
+ * 1. Google Gemini AI Vision (Fully Connected)
+ * 2. Remote Backend API (if active)
+ * 3. Offline Nutrition Dataset Fallback
  */
 export const scanFoodSmart = async (file, imagePreviewUrl) => {
-  // 1. Check for Gemini API Key
-  const geminiApiKey = (
-    import.meta.env.VITE_GEMINI_API_KEY ||
-    (typeof window !== "undefined" ? localStorage.getItem("gemini_api_key") : "") ||
-    ""
-  ).trim();
-
-  if (geminiApiKey && file) {
+  // 1. Google Gemini AI Vision
+  if (file) {
     try {
-      console.info("⚡ Analyzing food with Google Gemini Vision AI...");
-      const geminiResult = await analyzeFoodWithGemini(geminiApiKey, file);
+      console.info("⚡ Memproses foto makanan dengan Google Gemini AI...");
+      const geminiResult = await analyzeFoodWithGemini(file);
       if (geminiResult && geminiResult.success) {
         return {
           ...geminiResult,
@@ -180,11 +136,11 @@ export const scanFoodSmart = async (file, imagePreviewUrl) => {
         };
       }
     } catch (gErr) {
-      console.warn("Gemini Vision encountered an issue, falling back:", gErr);
+      console.warn("Gemini vision fallback activated:", gErr);
     }
   }
 
-  // 2. Try remote Backend API if configured
+  // 2. Try Remote Backend API
   const rawApiUrl = (import.meta.env.VITE_API_URL || "")
     .trim()
     .replace(/\/+$/, "")
@@ -196,7 +152,7 @@ export const scanFoodSmart = async (file, imagePreviewUrl) => {
       formData.append("file", file);
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
 
       const response = await fetch(`${rawApiUrl}/api/scanner/scan-food`, {
         method: "POST",
@@ -217,16 +173,16 @@ export const scanFoodSmart = async (file, imagePreviewUrl) => {
             fat: Number(data.fat) || 0,
             confidence: Number(data.confidence) || 92,
             image: data.image || imagePreviewUrl,
-            description: "Analisis nutrisi berhasil diverifikasi dari server backend.",
+            description: "Analisis nutrisi berhasil diverifikasi dari server.",
           };
         }
       }
     } catch (err) {
-      console.warn("Remote AI scanner unreachable, using local fallback:", err);
+      console.warn("Backend API unreachable:", err);
     }
   }
 
-  // 3. Local Smart Analysis Engine
+  // 3. Local Dataset Fallback
   const fileName = (file?.name || "").toLowerCase().replace(/[_-]/g, " ");
 
   let matchedFood = nutritionData.find((item) => {
@@ -235,43 +191,21 @@ export const scanFoodSmart = async (file, imagePreviewUrl) => {
   });
 
   if (!matchedFood) {
-    const colors = await analyzeImageDominantColor(imagePreviewUrl || URL.createObjectURL(file));
-
-    if (colors.g > colors.r + 15 && colors.g > colors.b + 15) {
-      matchedFood =
-        nutritionData.find((f) => f.name.toLowerCase().includes("salad")) ||
-        nutritionData.find((f) => f.name.toLowerCase().includes("kangkung")) ||
-        nutritionData.find((f) => f.name.toLowerCase().includes("sayur")) ||
-        nutritionData[2];
-    } else if (colors.r > 130 && colors.g < 110 && colors.b < 100) {
-      matchedFood =
-        nutritionData.find((f) => f.name.toLowerCase().includes("rendang")) ||
-        nutritionData.find((f) => f.name.toLowerCase().includes("daging")) ||
-        nutritionData.find((f) => f.name.toLowerCase().includes("sate")) ||
-        nutritionData[0];
-    } else if (colors.r > 150 && colors.g > 110 && colors.b < 90) {
-      matchedFood =
-        nutritionData.find((f) => f.name.toLowerCase() === "ayam goreng") ||
-        nutritionData.find((f) => f.name.toLowerCase().includes("telur")) ||
-        nutritionData.find((f) => f.name.toLowerCase().includes("tempe")) ||
-        nutritionData[4];
-    } else {
-      const popularOptions = [
-        "Ayam goreng",
-        "Salad",
-        "Nasi goreng",
-        "Telur dadar",
-        "Bakso",
-        "Gado-gado",
-        "Ikan bakar",
-        "Apel",
-      ];
-      const index = Math.abs((file?.size || 12345) % popularOptions.length);
-      const targetName = popularOptions[index].toLowerCase();
-      matchedFood =
-        nutritionData.find((f) => f.name.toLowerCase().includes(targetName)) ||
-        nutritionData[4];
-    }
+    const popularOptions = [
+      "Ayam goreng",
+      "Salad",
+      "Nasi goreng",
+      "Telur dadar",
+      "Bakso",
+      "Gado-gado",
+      "Ikan bakar",
+      "Apel",
+    ];
+    const index = Math.abs((file?.size || 12345) % popularOptions.length);
+    const targetName = popularOptions[index].toLowerCase();
+    matchedFood =
+      nutritionData.find((f) => f.name.toLowerCase().includes(targetName)) ||
+      nutritionData[4];
   }
 
   const confidence = 88 + Math.round((Math.sin(file?.size || 1) + 1) * 4);
