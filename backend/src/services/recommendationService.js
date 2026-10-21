@@ -1,0 +1,289 @@
+const prisma = require("../config/prisma");
+const { calculateUserStatus } = require("../utils/bmiUtils");
+const { buildAIPayload } = require("../utils/payloadBuilder");
+const { normalizeScore, getScoreLabel } = require("../utils/scoreUtils");
+const {
+  requestRecommendation,
+  requestRecommendationWithExplanation,
+} = require("./aiApiService");
+
+const {
+  MAX_FOOD_SCAN,
+  RECOMMENDATION_LIST_TTL,
+  CONCURRENT_LIMIT,
+} = require("../config/aiConfig");
+
+const { getCache, setCache } = require("../utils/cacheUtils");
+const isDev = process.env.NODE_ENV !== "production";
+const debugLog = (...args) => {
+  if (isDev) console.debug(...args);
+};
+
+// CACHE — hanya untuk list final (bukan perfood, itu sudah di Redis)
+const recommendationListCache = new Map();
+
+// SCORING HEURISTIK (tanpa AI)
+const heuristicScore = (food, userGoal, userStatus) => {
+  let score = 50;
+
+  const isObesity =
+    userStatus.includes("Obesity") ||
+    userGoal.includes("weight") ||
+    userGoal.includes("loss");
+
+  const isBulk = userGoal.includes("bulk");
+
+  if (isObesity) {
+    if (food.calories <= 200) score += 20;
+    else if (food.calories <= 300) score += 10;
+    else if (food.calories > 400) score -= 20;
+  } else if (isBulk) {
+    if (food.calories >= 400) score += 15;
+  } else {
+    if (food.calories >= 200 && food.calories <= 400) score += 10;
+  }
+
+  if (isBulk) {
+    if (food.proteins >= 20) score += 25;
+    else if (food.proteins >= 15) score += 15;
+    else if (food.proteins < 8) score -= 20;
+  } else {
+    if (food.proteins >= 10) score += 10;
+  }
+
+  if (isObesity) {
+    if (food.fat <= 5) score += 15;
+    else if (food.fat > 15) score -= 20;
+    if (food.carbohydrate <= 30) score += 10;
+    else if (food.carbohydrate > 60) score -= 10;
+  }
+
+  return Math.max(0, Math.min(100, score));
+};
+
+// FILTER KERAS
+const isFoodSuitable = (food, userGoal, userStatus) => {
+  const foodName = food.name.toLowerCase();
+  const badWords = ["gajih", "goreng", "lemak", "minyak", "babi"];
+  const isJunkFood = badWords.some((word) => foodName.includes(word));
+
+  if (
+    userGoal.includes("weight") ||
+    userGoal.includes("loss") ||
+    userStatus.includes("Obesity")
+  ) {
+    if (isJunkFood || food.calories > 350 || food.fat > 15) return false;
+  }
+
+  if (userGoal.includes("bulk")) {
+    if (food.proteins < 8) return false;
+  }
+
+  return true;
+};
+
+const processWithLimit = async (items, limit, asyncFn) => {
+  const results = [];
+  for (let i = 0; i < items.length; i += limit) {
+    const chunk = items.slice(i, i + limit);
+    const chunkResults = await Promise.all(chunk.map((item) => asyncFn(item)));
+    results.push(...chunkResults);
+  }
+  return results;
+};
+
+// Max food yang dikirim ke AI per request
+const MAX_AI_CANDIDATES = 6;
+const MAX_RECOMMENDATION_ITEMS = 10;
+const AI_PER_ITEM_TIMEOUT_MS = Number(
+  process.env.AI_RECOMMENDATION_ITEM_TIMEOUT || 1800,
+);
+
+const withTimeout = (promise, ms) =>
+  Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      setTimeout(() => reject(new Error("AI recommendation timeout")), ms);
+    }),
+  ]);
+
+// GENERATE RECOMMENDATION LIST
+const generateRecommendationList = async (userId, language = "en") => {
+  const user = await prisma.profile.findUnique({ where: { userId } });
+
+  if (!user) throw new Error("User profile not found");
+
+  const userGoal = user.goal?.toLowerCase() || "stay healthy";
+  const recommendationCacheKey = `recommend-list-${userId}-${language}-${userGoal}`;
+
+  // 1. Cek cache list final
+  const cachedRecommendations = getCache(
+    recommendationListCache,
+    recommendationCacheKey,
+  );
+  if (cachedRecommendations) {
+    debugLog("⚡ Using cached recommendation list");
+    return cachedRecommendations;
+  }
+
+  // 2. Ambil raw foods
+  const totalFoods = await prisma.food.count();
+  const skip = Math.floor(
+    Math.random() * Math.max(0, totalFoods - MAX_FOOD_SCAN),
+  );
+  const rawFoods = await prisma.food.findMany({ take: MAX_FOOD_SCAN, skip });
+
+  const userStatus = calculateUserStatus(user.weight, user.height) || "Normal";
+
+  // 3. Filter keras
+  const filteredFoods = rawFoods.filter((food) =>
+    isFoodSuitable(food, userGoal, userStatus),
+  );
+  const candidatePool = filteredFoods.length > 0 ? filteredFoods : rawFoods;
+
+  // Heuristic sort → ambil top MAX_AI_CANDIDATES saja ke AI
+  const topCandidates = candidatePool
+    .map((food) => ({
+      food,
+      hScore: heuristicScore(food, userGoal, userStatus),
+    }))
+    .sort((a, b) => b.hScore - a.hScore)
+    .slice(0, MAX_AI_CANDIDATES)
+    .map(({ food }) => food);
+
+  debugLog(
+    `📊 ${rawFoods.length} raw → ${filteredFoods.length} filtered → ${topCandidates.length} to AI`,
+  );
+
+  // kirim ke AI
+  // Cache per-food sudah dihandle Redis di aiApiService,
+  // tidak perlu cek/simpan cache di sini lagi
+  const aiResults = await processWithLimit(
+    topCandidates,
+    CONCURRENT_LIMIT,
+    async (food) => {
+      try {
+        const payload = { ...buildAIPayload(user, food), language };
+        const aiData = await withTimeout(
+          requestRecommendation(payload), // ← Redis cache + dedup aktif di sini
+          AI_PER_ITEM_TIMEOUT_MS,
+        );
+
+        if (!aiData?.is_recommended) return null;
+
+        const matchScore = normalizeScore(aiData.match_score_percent);
+
+        return {
+          ...food,
+          matchScore,
+          matchLabel: getScoreLabel(matchScore),
+          explanation:
+            aiData.explanation ||
+            (language === "id"
+              ? "Kecocokan nutrisi yang baik untuk profilmu."
+              : "Good nutritional match for your profile."),
+        };
+      } catch (error) {
+        console.error(`❌ Food AI Error (${food.name}):`, error.message);
+        return null;
+      }
+    },
+  );
+
+  // Sort hasil AI
+  const aiRankedFoods = aiResults
+    .filter(Boolean)
+    .sort((a, b) => b.matchScore - a.matchScore);
+
+  // Pastikan list tetap terisi stabil (maks 10) walau AI reject sebagian kandidat.
+  const selectedIds = new Set(aiRankedFoods.map((food) => food.id));
+  const fallbackFoods = candidatePool
+    .map((food) => ({
+        ...food,
+        matchScore: normalizeScore(heuristicScore(food, userGoal, userStatus)),
+        explanation:
+          language === "id"
+            ? "Direkomendasikan berdasarkan kecocokan profil nutrisi."
+            : "Recommended from nutrition profile matching.",
+    }))
+    .map((food) => ({
+      ...food,
+      matchLabel: getScoreLabel(food.matchScore),
+    }))
+    .filter((food) => !selectedIds.has(food.id))
+    .sort((a, b) => b.matchScore - a.matchScore);
+
+  let finalFoods = [...aiRankedFoods, ...fallbackFoods].slice(
+    0,
+    MAX_RECOMMENDATION_ITEMS,
+  );
+
+  // Jika masih kurang dari 10, isi dari pool database lain (tanpa call AI tambahan).
+  if (finalFoods.length < MAX_RECOMMENDATION_ITEMS) {
+    const needed = MAX_RECOMMENDATION_ITEMS - finalFoods.length;
+    const usedIds = new Set(finalFoods.map((food) => food.id));
+
+    const extraFoods = await prisma.food.findMany({
+      where: {
+        id: {
+          notIn: Array.from(usedIds),
+        },
+      },
+      take: Math.max(needed * 3, needed),
+    });
+
+    const rankedExtras = extraFoods
+      .filter((food) => isFoodSuitable(food, userGoal, userStatus))
+      .map((food) => ({
+        ...food,
+        matchScore: normalizeScore(heuristicScore(food, userGoal, userStatus)),
+        matchLabel: getScoreLabel(
+          normalizeScore(heuristicScore(food, userGoal, userStatus)),
+        ),
+        explanation:
+          language === "id"
+            ? "Direkomendasikan berdasarkan kecocokan profil nutrisi."
+            : "Recommended from nutrition profile matching.",
+      }))
+      .sort((a, b) => b.matchScore - a.matchScore)
+      .slice(0, needed);
+
+    finalFoods = [...finalFoods, ...rankedExtras].slice(
+      0,
+      MAX_RECOMMENDATION_ITEMS,
+    );
+  }
+
+  setCache(
+    recommendationListCache,
+    recommendationCacheKey,
+    finalFoods,
+    RECOMMENDATION_LIST_TTL,
+  );
+
+  return finalFoods;
+};
+
+// FOOD DETAIL
+const generateFoodDetail = async (userId, foodId, language = "en") => {
+  const user = await prisma.profile.findUnique({ where: { userId } });
+  const food = await prisma.food.findUnique({
+    where: { id: Number(foodId) },
+  });
+
+  if (!user || !food) throw new Error("Data not found");
+
+  const payload = { ...buildAIPayload(user, food), language };
+  const recommendation = await requestRecommendationWithExplanation(payload);
+  const matchScore = normalizeScore(recommendation?.match_score_percent);
+
+  return {
+    ...recommendation,
+    matchLabel: getScoreLabel(matchScore),
+  };
+};
+
+module.exports = {
+  generateRecommendationList,
+  generateFoodDetail,
+};

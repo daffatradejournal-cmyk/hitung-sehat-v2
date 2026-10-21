@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="hsGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#22c55e" />
+      <stop offset="60%" stop-color="#16a34a" />
+      <stop offset="100%" stop-color="#15803d" />
+    </linearGradient>
+    <filter id="hsShadow" x="-10%" y="-10%" width="125%" height="125%">
+      <feDropShadow dx="0" dy="16" stdDeviation="24" flood-color="#15803d" flood-opacity="0.3" />
+    </filter>
+  </defs>
+
+  <!-- Squircle Base -->
+  <rect x="32" y="32" width="448" height="448" rx="108" fill="url(#hsGrad)" filter="url(#hsShadow)" />
+  <rect x="36" y="36" width="440" height="440" rx="104" fill="none" stroke="#ffffff" stroke-width="4" stroke-opacity="0.25" />
+
+  <!-- Monogram HS -->
+  <g transform="translate(18, 14)">
+    <!-- Letter H -->
+    <rect x="114" y="145" width="46" height="182" rx="23" fill="#ffffff" />
+    <rect x="114" y="214" width="112" height="44" rx="20" fill="#ffffff" />
+    <rect x="180" y="145" width="46" height="182" rx="23" fill="#ffffff" />
+
+    <!-- Letter S -->
+    <path d="M 344 178 C 344 154 320 138 290 138 C 260 138 238 153 238 178 C 238 206 262 218 286 226 C 316 235 346 248 346 280 C 346 312 318 334 282 334 C 246 334 222 316 219 286" 
+          fill="none" stroke="#ffffff" stroke-width="44" stroke-linecap="round" stroke-linejoin="round" />
+
+    <!-- Fresh Leaf Flourish -->
+    <path d="M 324 108 C 362 108 382 134 382 134 C 382 134 356 152 318 152 C 318 134 324 108 324 108 Z" fill="#86efac" />
+    <path d="M 324 140 L 354 122" stroke="#15803d" stroke-width="4" stroke-linecap="round" />
+  </g>
+</svg>

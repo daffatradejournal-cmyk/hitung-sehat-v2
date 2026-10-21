@@ -1,0 +1,88 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// =========================
+// PROFILE USER
+// =========================
+model Profile {
+  id             String   @id @default(uuid())
+  userId         String   @unique
+  email          String   @unique
+  fullName       String?
+  photoURL       String?
+  avatarPath     String?
+  birthdate      DateTime?
+  gender         String?
+  isPregnant     Boolean? @default(false)
+  isBreastfeeding Boolean? @default(false)
+  hasMedicalCondition Boolean? @default(false)
+  activityLevel  String?  @default("sedentary")
+  weight         Float?
+  height         Float?
+  goal           String?  @default("Stay Healthy")
+  dailyCalories  Int?     @default(2000)
+  proteinTarget  Int?     @default(100)
+  userStatus     String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+// =========================
+// MASTER FOOD DATABASE
+// =========================
+model Food {
+  id             Int        @id @default(autoincrement())
+  name           String
+  calories       Float
+  proteins       Float
+  fat            Float
+  carbohydrate   Float
+  image          String?
+  foodCluster    Int
+  // relation
+  dailyLogs      DailyLog[]
+}
+
+// =========================
+// DAILY MEAL LOGS
+// =========================
+model DailyLog {
+  id             String     @id @default(uuid())
+  userId         String
+  // relation ke master food
+  foodId         Int?
+  Food           Food?      @relation(fields: [foodId], references: [id])
+  // snapshot data
+  foodName       String?
+  calories       Float      @default(0)
+  proteins       Float      @default(0)
+  fat            Float      @default(0)
+  carbs          Float      @default(0)
+  // future tracking
+  quantity       Float      @default(1)
+  mealType       String?
+  // tracking date
+  date           DateTime   @default(now())
+  day            String
+  @@index([userId, day])
+  @@index([userId, date])
+  @@index([foodId])
+}
+
+// =========================
+// DAILY AI INSIGHTS
+// =========================
+model DailyInsight {
+  id             String     @id @default(uuid())
+  userId         String
+  text           String     @db.Text
+  createdAt      DateTime   @default(now())
+  @@index([userId])
+}
