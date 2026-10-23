@@ -110,7 +110,19 @@ const RegisterPage = () => {
       navigate("/analyze");
     } catch (error) {
       console.error("Error Google Auth:", error);
-      setErrorMsg(t("auth.googleFailed"));
+      let msg = "";
+      if (error.code === "auth/unauthorized-domain") {
+        msg = "Domain '" + window.location.hostname + "' belum diizinkan di Firebase. Buka Firebase Console > Authentication > Settings > Authorized domains dan tambahkan '" + window.location.hostname + "'.";
+      } else if (error.code === "auth/popup-blocked") {
+        msg = "Popup Google login diblokir oleh browser. Silakan izinkan pop-up untuk situs ini.";
+      } else if (error.code === "auth/popup-closed-by-user") {
+        msg = "Login dibatalkan (jendela ditutup sebelum selesai).";
+      } else if (error.code === "auth/operation-not-allowed") {
+        msg = "Provider Google belum diaktifkan (Enable) di Firebase Console.";
+      } else {
+        msg = error.code ? "[" + error.code + "] " + error.message : t("auth.googleFailed");
+      }
+      setErrorMsg(msg);
     } finally {
       setIsLoading(false);
     }
