@@ -2,13 +2,24 @@ import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDNLzMaRfHp3QuTOo1nyUB_jf3GZv70oVo",
-  authDomain: "kalorinai.firebaseapp.com",
-  projectId: "kalorinai",
-  storageBucket: "kalorinai.firebasestorage.app",
-  messagingSenderId: "1090951199888",
-  appId: "1:1090951199888:web:5112e717705d6533e1ac15",
-  measurementId: "G-8PH547DM24",
+  apiKey:
+    import.meta.env.VITE_FIREBASE_API_KEY ||
+    "AIzaSyBWJ14u62Tvt_lzWpIImZuKxe9w5ZCrv2I",
+  authDomain:
+    import.meta.env.VITE_FIREBASE_AUTH_DOMAIN ||
+    "hitung-sehat.firebaseapp.com",
+  projectId:
+    import.meta.env.VITE_FIREBASE_PROJECT_ID ||
+    "hitung-sehat",
+  storageBucket:
+    import.meta.env.VITE_FIREBASE_STORAGE_BUCKET ||
+    "hitung-sehat.firebasestorage.app",
+  messagingSenderId:
+    import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID ||
+    "559738212303",
+  appId:
+    import.meta.env.VITE_FIREBASE_APP_ID ||
+    "1:559738212303:web:8126209d1065cde784ccba",
 };
 
 const app = initializeApp(firebaseConfig);
