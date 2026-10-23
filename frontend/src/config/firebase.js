@@ -19,7 +19,10 @@ const firebaseConfig = {
     "559738212303",
   appId:
     import.meta.env.VITE_FIREBASE_APP_ID ||
-    "1:559738212303:web:8126209d1065cde784ccba",
+    "1:559738212303:web:812f200d1065eda784ccba",
+  measurementId:
+    import.meta.env.VITE_FIREBASE_MEASUREMENT_ID ||
+    "G-CJ8W3FVS1M",
 };
 
 const app = initializeApp(firebaseConfig);
