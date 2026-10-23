@@ -50,6 +50,49 @@ const compressImageForAI = (file) => {
   });
 };
 
+let cachedWorkingEndpoint = null;
+
+/**
+ * Dynamically queries Google's ModelService (ListModels)
+ * to discover the exact models supported by this specific API key.
+ */
+const discoverSupportedModels = async (cleanKey) => {
+  const versions = ["v1beta", "v1"];
+  for (const ver of versions) {
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/${ver}/models?key=${cleanKey}`
+      );
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data?.models)) {
+          const supported = data.models
+            .filter(
+              (m) =>
+                Array.isArray(m.supportedGenerationMethods) &&
+                m.supportedGenerationMethods.includes("generateContent")
+            )
+            .map((m) => m.name.replace(/^models\//, ""));
+
+          if (supported.length > 0) {
+            // Sort: prioritize flash models (fast & free tier friendly), then others
+            supported.sort((a, b) => {
+              const aScore = a.includes("flash") ? 2 : a.includes("pro") ? 1 : 0;
+              const bScore = b.includes("flash") ? 2 : b.includes("pro") ? 1 : 0;
+              return bScore - aScore;
+            });
+
+            return supported.map((m) => ({ version: ver, model: m }));
+          }
+        }
+      }
+    } catch (e) {
+      console.warn(`Gagal query ListModels untuk ${ver}:`, e.message);
+    }
+  }
+  return [];
+};
+
 /**
  * Direct Google Gemini Vision Multimodal Food Recognition
  */
@@ -86,59 +129,105 @@ Balas HANYA dengan objek JSON murni tanpa markdown formatting (\`\`\`json):
   "description": "..."
 }`;
 
-  const models = [
-    "gemini-1.5-flash",
-    "gemini-2.0-flash",
-    "gemini-1.5-flash-8b",
-    "gemini-1.5-pro",
+  // Default candidates across v1beta and v1
+  const defaultCandidates = [
+    { version: "v1beta", model: "gemini-1.5-flash-latest" },
+    { version: "v1beta", model: "gemini-1.5-flash" },
+    { version: "v1beta", model: "gemini-1.5-flash-001" },
+    { version: "v1beta", model: "gemini-1.5-flash-002" },
+    { version: "v1beta", model: "gemini-2.0-flash" },
+    { version: "v1beta", model: "gemini-2.0-flash-exp" },
+    { version: "v1", model: "gemini-1.5-flash" },
+    { version: "v1", model: "gemini-1.5-flash-latest" },
+    { version: "v1beta", model: "gemini-1.5-pro-latest" },
+    { version: "v1beta", model: "gemini-1.5-pro" },
+    { version: "v1", model: "gemini-1.5-pro" },
   ];
+
+  // Build target list: cached endpoint first, then discovered, then defaults
+  let targets = [];
+  if (cachedWorkingEndpoint) {
+    targets.push(cachedWorkingEndpoint);
+  }
+
+  const discovered = await discoverSupportedModels(cleanKey);
+  targets.push(...discovered);
+  targets.push(...defaultCandidates);
+
+  // Deduplicate
+  const seen = new Set();
+  const uniqueTargets = targets.filter((t) => {
+    const key = `${t.version}/${t.model}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 
   let lastErrorMessage = "";
 
-  for (const model of models) {
-    try {
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${cleanKey}`;
-      const payload = {
-        contents: [
-          {
-            parts: [
-              { text: prompt },
-              {
-                inlineData: {
-                  mimeType: mime,
-                  data: base64,
-                },
-              },
-            ],
-          },
-        ],
-        generationConfig: {
-          temperature: 0.2,
-          responseMimeType: "application/json",
-        },
-      };
+  for (const target of uniqueTargets) {
+    const { version, model } = target;
+    const cleanModel = model.replace(/^models\//, "");
 
-      const res = await fetch(endpoint, {
+    const endpoint = `https://generativelanguage.googleapis.com/${version}/models/${cleanModel}:generateContent?key=${cleanKey}`;
+
+    const makePayload = (includeMimeType = true) => ({
+      contents: [
+        {
+          parts: [
+            { text: prompt },
+            {
+              inlineData: {
+                mimeType: mime,
+                data: base64,
+              },
+            },
+          ],
+        },
+      ],
+      generationConfig: {
+        temperature: 0.2,
+        ...(includeMimeType ? { responseMimeType: "application/json" } : {}),
+      },
+    });
+
+    try {
+      let res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(makePayload(true)),
       });
+
+      // If rejected because responseMimeType is not supported on this model, retry without it
+      if (res.status === 400) {
+        const testErr = await res.clone().json().catch(() => ({}));
+        const msg = testErr?.error?.message || "";
+        if (msg.toLowerCase().includes("responsemimetype") || msg.toLowerCase().includes("mime")) {
+          res = await fetch(endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(makePayload(false)),
+          });
+        }
+      }
 
       if (!res.ok) {
         const errJson = await res.json().catch(() => ({}));
         const errMsg = errJson?.error?.message || `HTTP ${res.status}`;
-        console.warn(`Model ${model} gagal (${res.status}):`, errMsg);
+        console.warn(`Percobaan ${version}/models/${cleanModel} gagal (${res.status}):`, errMsg);
 
         if (res.status === 403) {
           if (errMsg.toLowerCase().includes("leaked")) {
+            if (typeof window !== "undefined") {
+              localStorage.removeItem("gemini_api_key");
+            }
             throw new Error("LEAKED_KEY: Kunci API Gemini ini dilaporkan bocor oleh Google. Silakan buat API Key baru di Google AI Studio.");
           }
           throw new Error(`PERMISSION_DENIED: Kunci API tidak valid atau tidak memiliki izin (${errMsg}).`);
         }
 
         if (res.status === 429) {
-          lastErrorMessage = "Batas kuota harian Gemini tercapai. Coba lagi nanti.";
-          continue;
+          throw new Error("QUOTA_EXCEEDED: Batas kuota gratis Google Gemini untuk akun ini telah tercapai hari ini. Silakan coba lagi beberapa saat lagi.");
         }
 
         lastErrorMessage = errMsg;
@@ -165,6 +254,10 @@ Balas HANYA dengan objek JSON murni tanpa markdown formatting (\`\`\`json):
       }
 
       if (parsed && parsed.food) {
+        // Cache this winning endpoint for future instant calls
+        cachedWorkingEndpoint = { version, model: cleanModel };
+        console.info(`✅ Berhasil menggunakan model Gemini: ${version}/models/${cleanModel}`);
+
         return {
           success: true,
           food: parsed.food,
@@ -178,10 +271,14 @@ Balas HANYA dengan objek JSON murni tanpa markdown formatting (\`\`\`json):
         };
       }
     } catch (err) {
-      if (err.message?.includes("LEAKED_KEY") || err.message?.includes("PERMISSION_DENIED")) {
+      if (
+        err.message?.includes("LEAKED_KEY") ||
+        err.message?.includes("PERMISSION_DENIED") ||
+        err.message?.includes("QUOTA_EXCEEDED")
+      ) {
         throw err;
       }
-      console.warn(`Percobaan model ${model} error:`, err.message);
+      console.warn(`Target ${version}/${cleanModel} error:`, err.message);
       lastErrorMessage = err.message;
     }
   }
@@ -216,11 +313,15 @@ export const scanFoodSmart = async (file, imagePreviewUrl) => {
       }
     } catch (gErr) {
       console.error("Gemini Vision Error:", gErr);
-      // If key is reported as leaked or permission denied, surface error clearly to user!
-      if (gErr.message?.includes("LEAKED_KEY") || gErr.message?.includes("PERMISSION_DENIED")) {
+      // If key is reported as leaked, permission denied, or quota exceeded, surface error clearly!
+      if (
+        gErr.message?.includes("LEAKED_KEY") ||
+        gErr.message?.includes("PERMISSION_DENIED") ||
+        gErr.message?.includes("QUOTA_EXCEEDED")
+      ) {
         return {
           success: false,
-          message: gErr.message.replace(/^(LEAKED_KEY|PERMISSION_DENIED):\s*/, ""),
+          message: gErr.message.replace(/^(LEAKED_KEY|PERMISSION_DENIED|QUOTA_EXCEEDED):\s*/, ""),
         };
       }
       // For general network errors, notify user
