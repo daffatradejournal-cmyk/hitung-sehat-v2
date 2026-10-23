@@ -1,38 +1,73 @@
 import nutritionData from "../data/nutritionData.json";
 
-// Built-in Google Gemini API Key
-const BUILTIN_GEMINI_KEY = "AIzaSyAFjjVn7igBDjQFLbQnlYyryNYmCPFDL9I";
-
 /**
- * Convert file to base64
+ * Compress and normalize any image to 1024px JPEG
+ * This handles large phone camera photos (10MB+) and iOS HEIC/PNG formats seamlessly.
  */
-const fileToBase64 = (file) => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => {
-      const result = reader.result;
-      const base64 = typeof result === "string" ? result.split(",")[1] : "";
-      const mime =
-        (typeof result === "string" ? result.split(",")[0].match(/:(.*?);/)?.[1] : null) ||
-        file.type ||
-        "image/jpeg";
-      resolve({ base64, mime });
-    };
-    reader.onerror = (error) => reject(error);
+const compressImageForAI = (file) => {
+  return new Promise((resolve) => {
+    try {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const MAX_DIM = 1024;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > MAX_DIM || height > MAX_DIM) {
+            if (width > height) {
+              height = Math.round((height * MAX_DIM) / width);
+              width = MAX_DIM;
+            } else {
+              width = Math.round((width * MAX_DIM) / height);
+              height = MAX_DIM;
+            }
+          }
+
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, width, height);
+
+          const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+          const base64 = dataUrl.split(",")[1];
+          resolve({ base64, mime: "image/jpeg" });
+        };
+        img.onerror = () => {
+          const raw = e.target.result;
+          const b64 = typeof raw === "string" ? raw.split(",")[1] : "";
+          resolve({ base64: b64, mime: file?.type || "image/jpeg" });
+        };
+        img.src = e.target.result;
+      };
+      reader.onerror = () => resolve({ base64: "", mime: "image/jpeg" });
+      reader.readAsDataURL(file);
+    } catch {
+      resolve({ base64: "", mime: "image/jpeg" });
+    }
   });
 };
 
 /**
  * Direct Google Gemini Vision Multimodal Food Recognition
  */
-export const analyzeFoodWithGemini = async (file) => {
-  const { base64, mime } = await fileToBase64(file);
+export const analyzeFoodWithGemini = async (apiKey, file) => {
+  const cleanKey = (apiKey || "").trim();
+  if (!cleanKey) {
+    throw new Error("Kunci Google Gemini API belum diatur.");
+  }
+
+  const { base64, mime } = await compressImageForAI(file);
+  if (!base64) {
+    throw new Error("Gagal membaca file gambar.");
+  }
 
   const prompt = `Kamu adalah pakar gizi dan ahli nutrisi digital profesional untuk aplikasi "Hitung Sehat".
 Analisis foto makanan/minuman ini secara cermat.
-Identifikasi semua makanan atau minuman yang terlihat dalam foto (misal: lauk pauk, nasi, sayur, topping, sambal, buah, atau minuman), perkirakan porsi yang disajikan, dan hitung estimasi nilai nutrisinya:
-1. food: Nama makanan lengkap dan deskriptif dalam Bahasa Indonesia (contoh: "Nasi Uduk dengan Ayam Goreng & Sambal", "Salad Caesar Ayam Panggang", "Soto Betawi Daging Sapi", "Gado-Gado Telur", "Avocado Toast Telur Rebus"). Jika bukan makanan, sebutkan objeknya.
+Identifikasi semua makanan atau minuman yang terlihat dalam foto (misal: nasi, lauk ayam/ikan/daging, telur, sayuran, sambal, buah, atau minuman), perkirakan porsi yang disajikan, dan hitung estimasi nilai nutrisinya:
+1. food: Nama makanan lengkap dan deskriptif dalam Bahasa Indonesia (contoh: "Ayam Bakar dengan Nasi Putih & Sayuran", "Nasi Uduk Ayam Goreng", "Salad Sayur Saus Wijen", "Soto Ayam Komplit"). Jika bukan makanan, sebutkan nama objeknya.
 2. calories: Total perkiraan kalori (dalam kkal / kcal, angka bulat).
 3. proteins: Perkiraan protein (dalam gram, angka bulat atau desimal).
 4. carbohydrate: Perkiraan karbohidrat (dalam gram, angka bulat atau desimal).
@@ -40,7 +75,7 @@ Identifikasi semua makanan atau minuman yang terlihat dalam foto (misal: lauk pa
 6. confidence: Persentase keyakinan deteksi dari 88 sampai 98 (angka bulat).
 7. description: 1-2 kalimat ramah dan informatif mengenai kandungan gizi makanan ini serta dampaknya bagi kesehatan tubuh.
 
-Balas HANYA dengan objek JSON murni tanpa markdown formatting atau teks tambahan:
+Balas HANYA dengan objek JSON murni tanpa markdown formatting (\`\`\`json):
 {
   "food": "...",
   "calories": 450,
@@ -51,12 +86,18 @@ Balas HANYA dengan objek JSON murni tanpa markdown formatting atau teks tambahan
   "description": "..."
 }`;
 
-  const apiKey = (import.meta.env.VITE_GEMINI_API_KEY || BUILTIN_GEMINI_KEY).trim();
-  const models = ["gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-2.5-flash"];
+  const models = [
+    "gemini-1.5-flash",
+    "gemini-2.0-flash",
+    "gemini-1.5-flash-8b",
+    "gemini-1.5-pro",
+  ];
+
+  let lastErrorMessage = "";
 
   for (const model of models) {
     try {
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${cleanKey}`;
       const payload = {
         contents: [
           {
@@ -84,7 +125,23 @@ Balas HANYA dengan objek JSON murni tanpa markdown formatting atau teks tambahan
       });
 
       if (!res.ok) {
-        console.warn(`Model ${model} status:`, res.status);
+        const errJson = await res.json().catch(() => ({}));
+        const errMsg = errJson?.error?.message || `HTTP ${res.status}`;
+        console.warn(`Model ${model} gagal (${res.status}):`, errMsg);
+
+        if (res.status === 403) {
+          if (errMsg.toLowerCase().includes("leaked")) {
+            throw new Error("LEAKED_KEY: Kunci API Gemini ini dilaporkan bocor oleh Google. Silakan buat API Key baru di Google AI Studio.");
+          }
+          throw new Error(`PERMISSION_DENIED: Kunci API tidak valid atau tidak memiliki izin (${errMsg}).`);
+        }
+
+        if (res.status === 429) {
+          lastErrorMessage = "Batas kuota harian Gemini tercapai. Coba lagi nanti.";
+          continue;
+        }
+
+        lastErrorMessage = errMsg;
         continue;
       }
 
@@ -92,8 +149,20 @@ Balas HANYA dengan objek JSON murni tanpa markdown formatting atau teks tambahan
       const rawText = resJson?.candidates?.[0]?.content?.parts?.[0]?.text;
       if (!rawText) continue;
 
-      const cleaned = rawText.replace(/```json/gi, "").replace(/```/g, "").trim();
-      const parsed = JSON.parse(cleaned);
+      let parsed = null;
+      try {
+        const cleaned = rawText.replace(/```json/gi, "").replace(/```/g, "").trim();
+        parsed = JSON.parse(cleaned);
+      } catch {
+        const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          try {
+            parsed = JSON.parse(jsonMatch[0]);
+          } catch (e) {
+            console.warn("Regex fallback JSON parse failed:", e);
+          }
+        }
+      }
 
       if (parsed && parsed.food) {
         return {
@@ -109,11 +178,15 @@ Balas HANYA dengan objek JSON murni tanpa markdown formatting atau teks tambahan
         };
       }
     } catch (err) {
-      console.warn(`Error connecting to model ${model}:`, err);
+      if (err.message?.includes("LEAKED_KEY") || err.message?.includes("PERMISSION_DENIED")) {
+        throw err;
+      }
+      console.warn(`Percobaan model ${model} error:`, err.message);
+      lastErrorMessage = err.message;
     }
   }
 
-  throw new Error("Gemini AI Vision temporarily unavailable.");
+  throw new Error(lastErrorMessage || "Gagal menghubungi layanan Google Gemini AI.");
 };
 
 /**
@@ -125,10 +198,16 @@ Balas HANYA dengan objek JSON murni tanpa markdown formatting atau teks tambahan
  */
 export const scanFoodSmart = async (file, imagePreviewUrl) => {
   // 1. Google Gemini AI Vision
-  if (file) {
+  const apiKey = (
+    import.meta.env.VITE_GEMINI_API_KEY ||
+    (typeof window !== "undefined" ? localStorage.getItem("gemini_api_key") : "") ||
+    ""
+  ).trim();
+
+  if (apiKey && file) {
     try {
-      console.info("⚡ Memproses foto makanan dengan Google Gemini AI...");
-      const geminiResult = await analyzeFoodWithGemini(file);
+      console.info("⚡ Mengirim foto ke Google Gemini Vision AI...");
+      const geminiResult = await analyzeFoodWithGemini(apiKey, file);
       if (geminiResult && geminiResult.success) {
         return {
           ...geminiResult,
@@ -136,90 +215,32 @@ export const scanFoodSmart = async (file, imagePreviewUrl) => {
         };
       }
     } catch (gErr) {
-      console.warn("Gemini vision fallback activated:", gErr);
-    }
-  }
-
-  // 2. Try Remote Backend API
-  const rawApiUrl = (import.meta.env.VITE_API_URL || "")
-    .trim()
-    .replace(/\/+$/, "")
-    .replace(/\/api$/, "");
-
-  if (rawApiUrl && rawApiUrl !== "undefined") {
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
-
-      const response = await fetch(`${rawApiUrl}/api/scanner/scan-food`, {
-        method: "POST",
-        body: formData,
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data && data.success) {
-          return {
-            success: true,
-            food: data.food || data.predicted_food,
-            calories: Number(data.calories) || 0,
-            proteins: Number(data.proteins) || 0,
-            carbohydrate: Number(data.carbohydrate) || 0,
-            fat: Number(data.fat) || 0,
-            confidence: Number(data.confidence) || 92,
-            image: data.image || imagePreviewUrl,
-            description: "Analisis nutrisi berhasil diverifikasi dari server.",
-          };
-        }
+      console.error("Gemini Vision Error:", gErr);
+      // If key is reported as leaked or permission denied, surface error clearly to user!
+      if (gErr.message?.includes("LEAKED_KEY") || gErr.message?.includes("PERMISSION_DENIED")) {
+        return {
+          success: false,
+          message: gErr.message.replace(/^(LEAKED_KEY|PERMISSION_DENIED):\s*/, ""),
+        };
       }
-    } catch (err) {
-      console.warn("Backend API unreachable:", err);
+      // For general network errors, notify user
+      return {
+        success: false,
+        message: `Koneksi Gemini gagal: ${gErr.message}`,
+      };
     }
   }
 
-  // 3. Local Dataset Fallback
-  const fileName = (file?.name || "").toLowerCase().replace(/[_-]/g, " ");
-
-  let matchedFood = nutritionData.find((item) => {
-    const itemName = item.name.toLowerCase();
-    return fileName.includes(itemName) || itemName.split(" ").some((w) => w.length > 3 && fileName.includes(w));
-  });
-
-  if (!matchedFood) {
-    const popularOptions = [
-      "Ayam goreng",
-      "Salad",
-      "Nasi goreng",
-      "Telur dadar",
-      "Bakso",
-      "Gado-gado",
-      "Ikan bakar",
-      "Apel",
-    ];
-    const index = Math.abs((file?.size || 12345) % popularOptions.length);
-    const targetName = popularOptions[index].toLowerCase();
-    matchedFood =
-      nutritionData.find((f) => f.name.toLowerCase().includes(targetName)) ||
-      nutritionData[4];
+  if (!apiKey) {
+    return {
+      success: false,
+      message: "Kunci Google Gemini API belum dimasukkan di Vercel (VITE_GEMINI_API_KEY). Silakan masukkan API key Anda.",
+    };
   }
-
-  const confidence = 88 + Math.round((Math.sin(file?.size || 1) + 1) * 4);
 
   return {
-    success: true,
-    food: matchedFood.name,
-    calories: Number(matchedFood.calories) || 0,
-    proteins: Number(matchedFood.proteins) || 0,
-    carbohydrate: Number(matchedFood.carbohydrate) || 0,
-    fat: Number(matchedFood.fat) || 0,
-    confidence: confidence,
-    image: matchedFood.image || imagePreviewUrl,
-    description: "Estimasi nutrisi dihitung berdasarkan database gizi makanan Indonesia.",
+    success: false,
+    message: "Gagal menganalisis makanan. Silakan coba lagi.",
   };
 };
 
