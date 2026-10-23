@@ -18,7 +18,7 @@ const RequiredProfileModal = () => {
   const { i18n } = useTranslation();
   const isId = i18n.language?.startsWith("id");
   const { user } = useAuth();
-  const { userData, fetchProfile } = useUser();
+  const { userData, fetchProfile, setUserData } = useUser();
   const [formData, setFormData] = useState({
     birthdate: "",
     gender: "",
@@ -123,12 +123,27 @@ const RequiredProfileModal = () => {
         await fetchProfile(user.id, true);
       }
     } catch (error) {
-      console.error("Gagal menyimpan data awal profile:", error);
-      setErrorMsg(
-        isId
-          ? "Gagal menyimpan data. Silakan coba lagi."
-          : "Failed to save data. Please try again.",
-      );
+      console.warn("Backend belum terhubung, menyimpan data profil secara lokal:", error?.message);
+      const fallbackProfile = {
+        userId: user.id,
+        name: user.displayName || userData?.fullName || "User",
+        email: user.email || userData?.email,
+        birthdate: formData.birthdate,
+        gender: formData.gender,
+        activityLevel: formData.activityLevel,
+        isPregnant: formData.isPregnant,
+        isBreastfeeding: formData.isBreastfeeding,
+        hasMedicalCondition: formData.hasMedicalCondition,
+        weight,
+        height,
+        goal: userData?.goal || "Stay Healthy",
+      };
+      try {
+        localStorage.setItem("profile_" + user.id, JSON.stringify(fallbackProfile));
+      } catch {}
+      if (setUserData) {
+        setUserData(fallbackProfile);
+      }
     } finally {
       setIsSaving(false);
     }

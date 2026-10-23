@@ -43,7 +43,13 @@ export const UserProvider = ({ children }) => {
         setUserData(actualProfileData);
         lastFetchedId.current = userId; // tandai ID ini sudah sukses di fetch
       } catch (err) {
-        console.error("❌ Gagal sinkronisasi data user:", err);
+        console.warn("Backend offline, mengecek profil lokal:", err?.message);
+        try {
+          const cached = localStorage.getItem("profile_" + userId);
+          if (cached) {
+            setUserData(JSON.parse(cached));
+          }
+        } catch {}
         // jika gagal, biarkan lastFetchedId null agar bisa mencoba lagi nanti
         lastFetchedId.current = null;
       } finally {
