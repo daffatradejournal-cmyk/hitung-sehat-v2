@@ -52,18 +52,61 @@ const compressImageForAI = (file) => {
 
 let cachedWorkingEndpoint = null;
 
+const getSavedEndpoint = () => {
+  if (cachedWorkingEndpoint) return cachedWorkingEndpoint;
+  if (typeof window !== "undefined") {
+    try {
+      const saved = localStorage.getItem("gemini_working_endpoint");
+      if (saved) {
+        cachedWorkingEndpoint = JSON.parse(saved);
+        return cachedWorkingEndpoint;
+      }
+    } catch {
+      // ignore
+    }
+  }
+  return null;
+};
+
+const saveWorkingEndpoint = (endpoint) => {
+  cachedWorkingEndpoint = endpoint;
+  if (typeof window !== "undefined") {
+    try {
+      localStorage.setItem("gemini_working_endpoint", JSON.stringify(endpoint));
+    } catch {
+      // ignore
+    }
+  }
+};
+
+/**
+ * Fetch with custom AbortController timeout to prevent long hanging requests
+ */
+const fetchWithTimeout = async (url, options = {}, timeoutMs = 12000) => {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    return res;
+  } finally {
+    clearTimeout(id);
+  }
+};
+
 /**
  * Dynamically queries Google's ModelService (ListModels)
- * to discover the exact models supported by this specific API key.
+ * with strict timeout so it never stalls.
  */
 const discoverSupportedModels = async (cleanKey) => {
   const versions = ["v1beta", "v1"];
   for (const ver of versions) {
     try {
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/${ver}/models?key=${cleanKey}`
+      const res = await fetchWithTimeout(
+        `https://generativelanguage.googleapis.com/${ver}/models?key=${cleanKey}`,
+        {},
+        4000
       );
-      if (res.ok) {
+      if (res && res.ok) {
         const data = await res.json();
         if (Array.isArray(data?.models)) {
           const supported = data.models
@@ -75,10 +118,10 @@ const discoverSupportedModels = async (cleanKey) => {
             .map((m) => m.name.replace(/^models\//, ""));
 
           if (supported.length > 0) {
-            // Sort: prioritize flash models (fast & free tier friendly), then others
+            // Prioritize 2.0-flash and 1.5-flash for fastest speed
             supported.sort((a, b) => {
-              const aScore = a.includes("flash") ? 2 : a.includes("pro") ? 1 : 0;
-              const bScore = b.includes("flash") ? 2 : b.includes("pro") ? 1 : 0;
+              const aScore = a.includes("2.0-flash") ? 3 : a.includes("flash") ? 2 : 1;
+              const bScore = b.includes("2.0-flash") ? 3 : b.includes("flash") ? 2 : 1;
               return bScore - aScore;
             });
 
@@ -86,8 +129,8 @@ const discoverSupportedModels = async (cleanKey) => {
           }
         }
       }
-    } catch (e) {
-      console.warn(`Gagal query ListModels untuk ${ver}:`, e.message);
+    } catch {
+      // Timeout or network error, skip
     }
   }
   return [];
@@ -129,29 +172,30 @@ Balas HANYA dengan objek JSON murni tanpa markdown formatting (\`\`\`json):
   "description": "..."
 }`;
 
-  // Default candidates across v1beta and v1
+  // Default candidates prioritized by speed (Flash 2.0 & 1.5 first)
   const defaultCandidates = [
-    { version: "v1beta", model: "gemini-1.5-flash-latest" },
-    { version: "v1beta", model: "gemini-1.5-flash" },
-    { version: "v1beta", model: "gemini-1.5-flash-001" },
-    { version: "v1beta", model: "gemini-1.5-flash-002" },
     { version: "v1beta", model: "gemini-2.0-flash" },
+    { version: "v1beta", model: "gemini-1.5-flash" },
+    { version: "v1beta", model: "gemini-1.5-flash-latest" },
     { version: "v1beta", model: "gemini-2.0-flash-exp" },
     { version: "v1", model: "gemini-1.5-flash" },
     { version: "v1", model: "gemini-1.5-flash-latest" },
+    { version: "v1beta", model: "gemini-1.5-flash-001" },
+    { version: "v1beta", model: "gemini-1.5-flash-002" },
     { version: "v1beta", model: "gemini-1.5-pro-latest" },
-    { version: "v1beta", model: "gemini-1.5-pro" },
     { version: "v1", model: "gemini-1.5-pro" },
   ];
 
-  // Build target list: cached endpoint first, then discovered, then defaults
+  // Build target list: saved working endpoint from previous success is tried FIRST!
   let targets = [];
-  if (cachedWorkingEndpoint) {
-    targets.push(cachedWorkingEndpoint);
+  const saved = getSavedEndpoint();
+  if (saved) {
+    targets.push(saved);
+  } else {
+    // Only query ListModels if we don't have a known working endpoint yet
+    const discovered = await discoverSupportedModels(cleanKey);
+    targets.push(...discovered);
   }
-
-  const discovered = await discoverSupportedModels(cleanKey);
-  targets.push(...discovered);
   targets.push(...defaultCandidates);
 
   // Deduplicate
@@ -192,22 +236,30 @@ Balas HANYA dengan objek JSON murni tanpa markdown formatting (\`\`\`json):
     });
 
     try {
-      let res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(makePayload(true)),
-      });
+      let res = await fetchWithTimeout(
+        endpoint,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(makePayload(true)),
+        },
+        12000
+      );
 
       // If rejected because responseMimeType is not supported on this model, retry without it
       if (res.status === 400) {
         const testErr = await res.clone().json().catch(() => ({}));
         const msg = testErr?.error?.message || "";
         if (msg.toLowerCase().includes("responsemimetype") || msg.toLowerCase().includes("mime")) {
-          res = await fetch(endpoint, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(makePayload(false)),
-          });
+          res = await fetchWithTimeout(
+            endpoint,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(makePayload(false)),
+            },
+            12000
+          );
         }
       }
 
@@ -255,7 +307,7 @@ Balas HANYA dengan objek JSON murni tanpa markdown formatting (\`\`\`json):
 
       if (parsed && parsed.food) {
         // Cache this winning endpoint for future instant calls
-        cachedWorkingEndpoint = { version, model: cleanModel };
+        saveWorkingEndpoint({ version, model: cleanModel });
         console.info(`✅ Berhasil menggunakan model Gemini: ${version}/models/${cleanModel}`);
 
         return {
