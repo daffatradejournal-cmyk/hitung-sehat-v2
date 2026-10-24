@@ -13,6 +13,7 @@ import { syncUserToDb } from "../utils/authUtils";
 import AuthInput from "../components/Auth/AuthInput";
 import SocialAuth from "../components/Auth/SocialAuth";
 import LanguageSwitcher from "../components/common/LanguageSwitcher";
+import BrandLogo from "../components/common/BrandLogo";
 
 const RegisterPage = () => {
   const { t } = useTranslation();
@@ -134,11 +135,7 @@ const RegisterPage = () => {
         <LanguageSwitcher />
       </div>
       <div className="mb-6 text-center">
-        <img
-          src="/images/logo/kalorinLogo.png"
-          alt="Hitung Sehat"
-          className="w-48 sm:w-60"
-        />
+        <BrandLogo to="/" size="lg" className="justify-center" />
       </div>
 
       <div className="bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] w-full max-w-md p-5 sm:p-8">

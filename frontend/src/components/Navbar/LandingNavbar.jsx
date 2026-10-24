@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import LanguageSwitcher from "../common/LanguageSwitcher";
+import BrandLogo from "../common/BrandLogo";
 
 export default function LandingNavbar() {
   const { t } = useTranslation();
@@ -30,16 +31,7 @@ export default function LandingNavbar() {
         isVisible ? "translate-y-0" : "-translate-y-full"
       }`}
     >
-      <Link
-        to="/"
-        className="flex items-center gap-2 font-bold text-xl cursor-pointer shrink-0"
-      >
-        <img
-          src="/images/logo/kalorinLogo.png"
-          alt="Hitung Sehat Logo"
-          className="w-20 sm:w-24"
-        />
-      </Link>
+      <BrandLogo to="/" size="md" />
 
       <div className="flex items-center gap-2 sm:gap-4">
         <LanguageSwitcher />

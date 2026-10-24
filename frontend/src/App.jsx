@@ -6,6 +6,7 @@ import { Toaster } from "react-hot-toast";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "./context/AuthProvider";
 import { useUser } from "./context/UserContext";
+import MobileBottomNav from "./components/Navbar/MobileBottomNav";
 import GlobalErrorBoundary from "./components/common/GlobalErrorBoundary";
 const LandingPage = lazy(() => import("./pages/LandingPage"));
 const AnalyzePage = lazy(() => import("./pages/AnalyzePage"));
@@ -117,6 +118,7 @@ export default function App() {
         </Routes>
       </Suspense>
 
+      <MobileBottomNav />
       {shouldShowRequiredProfileModal && <RequiredProfileModal />}
     </GlobalErrorBoundary>
   );

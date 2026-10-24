@@ -286,7 +286,7 @@ const AnalyzePage = () => {
 
       {/* TAB CONTENT */}
       {currentTab === "scan" ? (
-        <div className="bg-[#eefaf1] w-full flex-grow mt-2 sm:mt-4 pt-6 sm:pt-10 pb-16 sm:pb-20">
+        <div className="bg-[#eefaf1] w-full flex-grow mt-2 sm:mt-4 pt-6 sm:pt-10 pb-28 sm:pb-20">
           <div className="max-w-7xl mx-auto px-4 w-full">
             <div className="border-2 border-green-400 border-dashed rounded-3xl p-3 sm:p-6 min-h-[320px] sm:min-h-[400px] flex items-center justify-center bg-black/5 overflow-hidden mb-6">
               {isCameraActive ? (

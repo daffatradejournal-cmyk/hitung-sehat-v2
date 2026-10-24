@@ -9,6 +9,7 @@ import { useUser } from "../../context/UserContext";
 import NavLinks from "./NavLinks";
 import NavUserDropdown from "./NavUserDropdown";
 import LanguageSwitcher from "../common/LanguageSwitcher";
+import BrandLogo from "../common/BrandLogo";
 
 const isPlaceholderName = (value) => {
   if (typeof value !== "string") return true;
@@ -102,16 +103,7 @@ const Navbar = ({ user, loading, userData }) => {
       >
         <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-4 flex items-center justify-between">
           {/* LEFT */}
-          <Link
-            to={user ? "/analyze" : "/"}
-            className="flex items-center gap-2 font-bold text-xl cursor-pointer shrink-0"
-          >
-            <img
-              src="/images/logo/kalorinLogo.png"
-              alt="Hitung Sehat Logo"
-              className="w-20 sm:w-24 md:w-28"
-            />
-          </Link>
+          <BrandLogo to={user ? "/analyze" : "/"} size="md" />
 
           {/* DESKTOP LINKS */}
           {user && (

@@ -2,6 +2,7 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Sparkles, ArrowRight } from "lucide-react";
+import BrandLogo from "../common/BrandLogo";
 
 export default function LandingHero() {
   const navigate = useNavigate();
@@ -15,11 +16,7 @@ export default function LandingHero() {
 
       {/* Main Content */}
       <div className="z-10 relative flex flex-col items-center w-full max-w-2xl mx-auto">
-        <img
-          src="/images/logo/kalorinLogo.png"
-          alt="Hitung Sehat Logo"
-          className="w-40 sm:w-52 mt-4 sm:mt-6 mb-4"
-        />
+        <BrandLogo to="/" size="lg" className="justify-center mt-4 sm:mt-6 mb-4" />
 
         {/* AI Tag */}
         <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/80 border border-green-200 text-green-700 text-xs font-bold mb-4 shadow-sm backdrop-blur-sm">
