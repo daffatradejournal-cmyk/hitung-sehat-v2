@@ -318,7 +318,7 @@ Balas HANYA dengan objek JSON murni tanpa markdown formatting (\`\`\`json):
           carbohydrate: Math.round((Number(parsed.carbohydrate) || 0) * 10) / 10,
           fat: Math.round((Number(parsed.fat) || 0) * 10) / 10,
           confidence: Math.min(99, Math.max(80, Math.round(Number(parsed.confidence) || 94))),
-          description: parsed.description || "Analisis gizi berhasil dihasilkan oleh Google Gemini AI.",
+          description: parsed.description || "Analisis gizi berhasil dihasilkan oleh AI.",
           source: "gemini",
         };
       }
@@ -335,7 +335,7 @@ Balas HANYA dengan objek JSON murni tanpa markdown formatting (\`\`\`json):
     }
   }
 
-  throw new Error(lastErrorMessage || "Gagal menghubungi layanan Google Gemini AI.");
+  throw new Error(lastErrorMessage || "Gagal menghubungi layanan AI.");
 };
 
 /**
@@ -355,7 +355,7 @@ export const scanFoodSmart = async (file, imagePreviewUrl) => {
 
   if (apiKey && file) {
     try {
-      console.info("⚡ Mengirim foto ke Google Gemini Vision AI...");
+      console.info("⚡ Mengirim foto ke AI...");
       const geminiResult = await analyzeFoodWithGemini(apiKey, file);
       if (geminiResult && geminiResult.success) {
         return {
@@ -364,7 +364,7 @@ export const scanFoodSmart = async (file, imagePreviewUrl) => {
         };
       }
     } catch (gErr) {
-      console.error("Gemini Vision Error:", gErr);
+      console.error("AI Vision Error:", gErr);
       // If key is reported as leaked, permission denied, or quota exceeded, surface error clearly!
       if (
         gErr.message?.includes("LEAKED_KEY") ||
@@ -379,7 +379,7 @@ export const scanFoodSmart = async (file, imagePreviewUrl) => {
       // For general network errors, notify user
       return {
         success: false,
-        message: `Koneksi Gemini gagal: ${gErr.message}`,
+        message: `Koneksi AI gagal: ${gErr.message}`,
       };
     }
   }
@@ -387,7 +387,7 @@ export const scanFoodSmart = async (file, imagePreviewUrl) => {
   if (!apiKey) {
     return {
       success: false,
-      message: "Kunci Google Gemini API belum dimasukkan di Vercel (VITE_GEMINI_API_KEY). Silakan masukkan API key Anda.",
+      message: "Kunci API belum dimasukkan di Vercel (VITE_GEMINI_API_KEY). Silakan masukkan API key Anda.",
     };
   }
 

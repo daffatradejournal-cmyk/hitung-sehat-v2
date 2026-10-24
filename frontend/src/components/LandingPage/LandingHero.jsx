@@ -21,7 +21,7 @@ export default function LandingHero() {
         {/* AI Tag */}
         <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/80 border border-green-200 text-green-700 text-xs font-bold mb-4 shadow-sm backdrop-blur-sm">
           <Sparkles size={13} className="text-green-500" />
-          <span>Bertenaga Google Gemini AI</span>
+          <span>Bertenaga AI</span>
         </div>
 
         {/* Text Content */}
